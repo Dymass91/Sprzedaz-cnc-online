@@ -1,136 +1,160 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
-import { MAX_CAD_FILES, validateCadFile, type CadExtension } from "@/features/cad-files/validation";
-import { getMaterial, type FinishId, type MaterialId } from "@/features/materials/data";
-import type { ViewerMode } from "@/features/viewer-3d/types";
-import { clampQuantity, type LeadTimeId, type ToleranceId } from "./options";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
+import { loadModelFile, ModelLoadError, type LoadedModel } from "@/features/cad-files/loadModelFile";
+import type { LengthUnit } from "@/features/geometry/units";
+import type { MaterialId as MaterialCategory } from "@/features/materials/data";
+import {
+  defaultMaterialForCategory,
+  getFinishAvailability,
+  type FinishId,
+  type LeadTimeId,
+  type MaterialOptionId,
+  type ToleranceId,
+} from "./options";
 
-export type SelectedCadFile = {
-  id: string;
-  file: File;
-  extension: CadExtension;
-};
-
-export type RejectedCadFile = { name: string; reason: string };
+export type ModelSlot =
+  | { status: "empty" }
+  | { status: "loading"; fileName: string; fileSize: number }
+  | { status: "ready"; model: LoadedModel }
+  | { status: "error"; fileName: string | null; message: string };
 
 export type ConfiguratorState = {
-  files: SelectedCadFile[];
-  rejected: RejectedCadFile[];
-  materialId: MaterialId;
-  grade: string;
-  quantity: number;
+  model: ModelSlot;
+  unit: LengthUnit;
+  /** Użytkownik potwierdził jednostki modelu (STL ich nie zapisuje). */
+  unitConfirmed: boolean;
+  material: MaterialOptionId;
+  /** Surowa wartość pola — walidacja w `parseQuantity`. */
+  quantityInput: string;
   tolerance: ToleranceId;
   finish: FinishId;
   leadTime: LeadTimeId;
-  viewMode: ViewerMode;
+  /** Krok formularza zapytania jest otwarty. */
+  inquiryOpen: boolean;
 };
 
 type Action =
-  | { type: "add-files"; accepted: SelectedCadFile[]; rejected: RejectedCadFile[] }
-  | { type: "remove-file"; id: string }
-  | { type: "clear-rejected" }
-  | { type: "set-material"; materialId: MaterialId; grade?: string }
-  | { type: "set-quantity"; quantity: number }
+  | { type: "model-loading"; fileName: string; fileSize: number }
+  | { type: "model-ready"; model: LoadedModel }
+  | { type: "model-error"; fileName: string | null; message: string }
+  | { type: "model-remove" }
+  | { type: "set-unit"; unit: LengthUnit }
+  | { type: "confirm-unit"; confirmed: boolean }
+  | { type: "set-material"; material: MaterialOptionId }
+  | { type: "set-quantity"; value: string }
   | { type: "set-tolerance"; tolerance: ToleranceId }
   | { type: "set-finish"; finish: FinishId }
   | { type: "set-lead-time"; leadTime: LeadTimeId }
-  | { type: "set-view-mode"; viewMode: ViewerMode };
-
-const defaultMaterial = getMaterial("aluminium");
+  | { type: "set-inquiry-open"; open: boolean };
 
 const initialState: ConfiguratorState = {
-  files: [],
-  rejected: [],
-  materialId: defaultMaterial.id,
-  grade: defaultMaterial.grades[1],
-  quantity: 10,
+  model: { status: "empty" },
+  unit: "mm",
+  unitConfirmed: false,
+  material: "al-6061",
+  quantityInput: "1",
   tolerance: "standard",
-  finish: "anodized",
+  finish: "none",
   leadTime: "standard",
-  viewMode: "shaded",
+  inquiryOpen: false,
 };
 
 function reducer(state: ConfiguratorState, action: Action): ConfiguratorState {
   switch (action.type) {
-    case "add-files": {
-      const room = Math.max(0, MAX_CAD_FILES - state.files.length);
-      const accepted = action.accepted.slice(0, room);
-      const overflow = action.accepted.slice(room).map((f) => ({
-        name: f.file.name,
-        reason: `Możesz dodać maksymalnie ${MAX_CAD_FILES} plików w jednym zapytaniu.`,
-      }));
-      return { ...state, files: [...state.files, ...accepted], rejected: [...action.rejected, ...overflow] };
-    }
-    case "remove-file":
-      return { ...state, files: state.files.filter((f) => f.id !== action.id) };
-    case "clear-rejected":
-      return { ...state, rejected: [] };
+    case "model-loading":
+      return { ...state, model: { status: "loading", fileName: action.fileName, fileSize: action.fileSize } };
+    case "model-ready":
+      // Nowy model = jednostki trzeba potwierdzić od nowa.
+      return { ...state, model: { status: "ready", model: action.model }, unitConfirmed: false };
+    case "model-error":
+      return { ...state, model: { status: "error", fileName: action.fileName, message: action.message } };
+    case "model-remove":
+      return { ...state, model: { status: "empty" }, unitConfirmed: false, inquiryOpen: false };
+    case "set-unit":
+      return { ...state, unit: action.unit, unitConfirmed: false };
+    case "confirm-unit":
+      return { ...state, unitConfirmed: action.confirmed };
     case "set-material": {
-      const material = getMaterial(action.materialId);
-      const grade = action.grade && material.grades.includes(action.grade) ? action.grade : material.grades[0];
-      // Wykończenie musi pasować do materiału — inaczej wracamy do pierwszego dostępnego.
-      const finish = material.finishes.includes(state.finish) ? state.finish : material.finishes[0];
-      return { ...state, materialId: material.id, grade, finish };
+      // Wykończenie niedostępne dla nowego materiału wraca do „bez obróbki”.
+      const finish = getFinishAvailability(action.material, state.finish).status === "unavailable" ? "none" : state.finish;
+      return { ...state, material: action.material, finish };
     }
     case "set-quantity":
-      return { ...state, quantity: clampQuantity(action.quantity) };
+      return { ...state, quantityInput: action.value };
     case "set-tolerance":
       return { ...state, tolerance: action.tolerance };
     case "set-finish":
       return { ...state, finish: action.finish };
     case "set-lead-time":
       return { ...state, leadTime: action.leadTime };
-    case "set-view-mode":
-      return { ...state, viewMode: action.viewMode };
+    case "set-inquiry-open":
+      return { ...state, inquiryOpen: action.open };
   }
 }
 
 type ConfiguratorContextValue = {
   state: ConfiguratorState;
-  addFiles: (files: Iterable<File>) => void;
-  removeFile: (id: string) => void;
-  clearRejected: () => void;
-  setMaterial: (materialId: MaterialId, grade?: string) => void;
-  setQuantity: (quantity: number) => void;
+  loadFile: (file: File) => void;
+  removeModel: () => void;
+  setUnit: (unit: LengthUnit) => void;
+  confirmUnit: (confirmed: boolean) => void;
+  setMaterial: (material: MaterialOptionId) => void;
+  /** Wybór z kart materiałów na stronie głównej. */
+  selectMaterialCategory: (category: MaterialCategory) => void;
+  setQuantityInput: (value: string) => void;
   setTolerance: (tolerance: ToleranceId) => void;
   setFinish: (finish: FinishId) => void;
   setLeadTime: (leadTime: LeadTimeId) => void;
-  setViewMode: (mode: ViewerMode) => void;
+  setInquiryOpen: (open: boolean) => void;
 };
 
 const ConfiguratorContext = createContext<ConfiguratorContextValue | null>(null);
 
-let fileCounter = 0;
-
 export function ConfiguratorProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const loadController = useRef<AbortController | null>(null);
 
-  const addFiles = useCallback((files: Iterable<File>) => {
-    const accepted: SelectedCadFile[] = [];
-    const rejected: RejectedCadFile[] = [];
-    for (const file of files) {
-      const result = validateCadFile(file);
-      if (result.ok) accepted.push({ id: `cad-${++fileCounter}`, file, extension: result.extension });
-      else rejected.push({ name: file.name, reason: result.reason });
-    }
-    dispatch({ type: "add-files", accepted, rejected });
+  useEffect(() => () => loadController.current?.abort(), []);
+
+  const loadFile = useCallback((file: File) => {
+    // Nowy plik przerywa analizę poprzedniego.
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    dispatch({ type: "model-loading", fileName: file.name, fileSize: file.size });
+    loadModelFile(file, controller.signal)
+      .then((model) => {
+        if (!controller.signal.aborted) dispatch({ type: "model-ready", model });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = error instanceof ModelLoadError ? error.message : "Nie udało się wczytać modelu.";
+        dispatch({ type: "model-error", fileName: file.name, message });
+      });
+  }, []);
+
+  const removeModel = useCallback(() => {
+    loadController.current?.abort();
+    dispatch({ type: "model-remove" });
   }, []);
 
   const value = useMemo<ConfiguratorContextValue>(
     () => ({
       state,
-      addFiles,
-      removeFile: (id) => dispatch({ type: "remove-file", id }),
-      clearRejected: () => dispatch({ type: "clear-rejected" }),
-      setMaterial: (materialId, grade) => dispatch({ type: "set-material", materialId, grade }),
-      setQuantity: (quantity) => dispatch({ type: "set-quantity", quantity }),
+      loadFile,
+      removeModel,
+      setUnit: (unit) => dispatch({ type: "set-unit", unit }),
+      confirmUnit: (confirmed) => dispatch({ type: "confirm-unit", confirmed }),
+      setMaterial: (material) => dispatch({ type: "set-material", material }),
+      selectMaterialCategory: (category) => dispatch({ type: "set-material", material: defaultMaterialForCategory(category) }),
+      setQuantityInput: (value) => dispatch({ type: "set-quantity", value }),
       setTolerance: (tolerance) => dispatch({ type: "set-tolerance", tolerance }),
       setFinish: (finish) => dispatch({ type: "set-finish", finish }),
       setLeadTime: (leadTime) => dispatch({ type: "set-lead-time", leadTime }),
-      setViewMode: (viewMode) => dispatch({ type: "set-view-mode", viewMode }),
+      setInquiryOpen: (open) => dispatch({ type: "set-inquiry-open", open }),
     }),
-    [state, addFiles],
+    [state, loadFile, removeModel],
   );
 
   return <ConfiguratorContext.Provider value={value}>{children}</ConfiguratorContext.Provider>;

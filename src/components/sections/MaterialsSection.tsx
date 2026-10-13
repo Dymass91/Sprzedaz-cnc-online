@@ -8,10 +8,13 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { ArrowRightIcon, CheckIcon } from "@/components/ui/icons";
 import { useConfigurator } from "@/features/configurator/ConfiguratorContext";
 import { finishLabels, getMaterial, materials } from "@/features/materials/data";
+import { getMaterialOption } from "@/features/configurator/options";
 
 export function MaterialsSection() {
-  const { state, setMaterial } = useConfigurator();
-  const selected = getMaterial(state.materialId);
+  const { state, selectMaterialCategory } = useConfigurator();
+  // Karta odpowiada grupie materiału wybranego w konfiguratorze.
+  const activeCategory = getMaterialOption(state.material).category;
+  const selected = getMaterial(activeCategory ?? "aluminium");
 
   return (
     <section id="materialy" aria-labelledby="materialy-title" className="relative py-9 lg:py-12">
@@ -30,13 +33,13 @@ export function MaterialsSection() {
 
         <div role="group" aria-label="Materiał części" className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 lg:gap-4">
           {materials.map((m) => {
-            const active = m.id === state.materialId;
+            const active = m.id === activeCategory;
             return (
               <button
                 key={m.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() => setMaterial(m.id)}
+                onClick={() => selectMaterialCategory(m.id)}
                 className={cn(
                   "group relative flex flex-col rounded-lg border bg-surface p-3 text-left transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5",
                   active

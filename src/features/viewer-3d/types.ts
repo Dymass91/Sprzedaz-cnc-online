@@ -1,40 +1,39 @@
-import type { IllustrationMode } from "@/components/illustrations/types";
+import type { MaterialId as MaterialCategory } from "@/features/materials/data";
+import type { Vec3Tuple } from "@/features/geometry/types";
 
 /**
- * Kontrakt przyszłego viewera 3D (Three.js / React Three Fiber).
+ * Kontrakt viewera 3D. Viewer zna wyłącznie geometrię i opcje widoku —
+ * nie wie nic o formularzach, zapytaniach ani cenach.
  *
- * Plan:
- *  - `HeroModel` — interaktywny model części w hero (obrót, przejście
- *    szkic → metal), zastąpi statyczną ilustrację <IsoBracket>.
- *  - `PartViewer` — podgląd modeli klientów w konfiguratorze: STL/OBJ
- *    bezpośrednio w przeglądarce, STEP/IGES po konwersji (np. occt-import-js
- *    w Web Workerze albo konwersja na backendzie do glTF).
- *
- * Three.js zostanie dodany razem z pierwszym działającym komponentem,
- * ładowany dynamicznie (`next/dynamic`, `ssr: false`), aby nie obciążać
- * pierwszego wczytania strony.
+ * Rozszerzenia (plan): STEP/IGES po konwersji (Open CASCADE w Web Workerze
+ * lub na serwerze) do tej samej postaci `positions`, przekroje, pomiar
+ * odległości między punktami, podświetlanie cech obróbkowych.
  */
 
-/** Tryby widoku — wspólne dla ilustracji SVG i przyszłego viewera 3D. */
-export type ViewerMode = IllustrationMode;
-
-export const viewerModes: { id: ViewerMode; label: string }[] = [
-  { id: "shaded", label: "Widok 3D" },
-  { id: "dimensions", label: "Wymiary" },
-  { id: "section", label: "Przekrój" },
-  { id: "wireframe", label: "Siatka" },
-];
-
-export type PartViewerProps = {
-  /** Plik CAD klienta (STL/OBJ bezpośrednio; STEP/IGES po konwersji). */
-  file: File | null;
-  mode: ViewerMode;
-  /** Kolor/materiał renderu dobierany do wybranego materiału. */
-  materialId: string;
-  onModeChange?: (mode: ViewerMode) => void;
+export type StlViewerProps = {
+  /** 9 liczb na trójkąt, w jednostkach pliku. */
+  positions: Float32Array;
+  min: Vec3Tuple;
+  max: Vec3Tuple;
+  /** Przelicznik jednostek pliku na mm (do opisów wymiarów i siatki). */
+  unitToMm: number;
+  /** Grupa materiałowa — dobór wyglądu powierzchni. */
+  appearance: MaterialCategory | null;
+  wireframe: boolean;
+  showDimensions: boolean;
+  /** Zmiana wartości resetuje kamerę. */
+  resetSignal: number;
+  /** Etykieta dostępna dla czytników ekranu. */
+  label: string;
 };
 
-/** Czy dany format będzie mógł być wyświetlony bez konwersji po stronie serwera. */
-export function isBrowserRenderable(extension: string): boolean {
-  return extension === "stl" || extension === "obj";
-}
+/** Wygląd powierzchni dla grup materiałowych (lekki PBR, bez tekstur). */
+export const surfaceAppearance: Record<MaterialCategory | "default", { color: string; metalness: number; roughness: number }> = {
+  aluminium: { color: "#c3cad2", metalness: 0.75, roughness: 0.32 },
+  steel: { color: "#9aa2ab", metalness: 0.8, roughness: 0.38 },
+  stainless: { color: "#ccd2d8", metalness: 0.85, roughness: 0.24 },
+  brass: { color: "#c9a35a", metalness: 0.85, roughness: 0.3 },
+  plastic: { color: "#ecebe6", metalness: 0, roughness: 0.55 },
+  titanium: { color: "#a3a4a8", metalness: 0.75, roughness: 0.4 },
+  default: { color: "#bcc3cb", metalness: 0.6, roughness: 0.4 },
+};

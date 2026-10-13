@@ -1,41 +1,46 @@
+import {
+  MAX_MODEL_FILE_SIZE,
+  PLANNED_MODEL_FORMATS,
+  SUPPORTED_MODEL_FORMATS,
+  type SupportedModelExtension,
+} from "./config";
+
 /**
- * Walidacja plików CAD po stronie przeglądarki. Ta sama lista formatów
- * powinna zostać użyta w walidacji po stronie serwera, gdy powstanie upload.
+ * Wstępna walidacja pliku (nazwa, rozmiar). Poprawność zawartości sprawdza
+ * dopiero parser — rozszerzenie .stl nie gwarantuje, że to prawdziwy STL.
  */
 
-export const ACCEPTED_CAD_EXTENSIONS = ["step", "stp", "stl", "iges", "igs", "dxf", "obj"] as const;
-export type CadExtension = (typeof ACCEPTED_CAD_EXTENSIONS)[number];
+export const MODEL_ACCEPT_ATTRIBUTE = SUPPORTED_MODEL_FORMATS.map((f) => `.${f.extension}`).join(",");
+export const SUPPORTED_FORMATS_LABEL = SUPPORTED_MODEL_FORMATS.map((f) => f.label).join(", ");
 
-export const MAX_CAD_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-export const MAX_CAD_FILES = 10;
-
-/** Wartość atrybutu `accept` dla <input type="file">. */
-export const CAD_ACCEPT_ATTRIBUTE = ACCEPTED_CAD_EXTENSIONS.map((ext) => `.${ext}`).join(",");
-
-export type CadFileValidation = { ok: true; extension: CadExtension } | { ok: false; reason: string };
+export type ModelFileValidation = { ok: true; extension: SupportedModelExtension } | { ok: false; reason: string };
 
 export function getExtension(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   return dot === -1 ? "" : fileName.slice(dot + 1).toLowerCase();
 }
 
-function isAcceptedExtension(ext: string): ext is CadExtension {
-  return (ACCEPTED_CAD_EXTENSIONS as readonly string[]).includes(ext);
+function isSupported(ext: string): ext is SupportedModelExtension {
+  return SUPPORTED_MODEL_FORMATS.some((f) => f.extension === ext);
 }
 
-export function validateCadFile(file: Pick<File, "name" | "size">): CadFileValidation {
+export function validateModelFile(file: Pick<File, "name" | "size">): ModelFileValidation {
   const ext = getExtension(file.name);
-  if (!isAcceptedExtension(ext)) {
+  if (!isSupported(ext)) {
+    if ((PLANNED_MODEL_FORMATS as readonly string[]).includes(ext)) {
+      return {
+        ok: false,
+        reason: `Format .${ext.toUpperCase()} nie jest jeszcze obsługiwany. Wyeksportuj model do STL w swoim programie CAD.`,
+      };
+    }
+    return { ok: false, reason: `Nieobsługiwany plik${ext ? ` .${ext}` : ""}. Obecnie akceptujemy wyłącznie ${SUPPORTED_FORMATS_LABEL}.` };
+  }
+  if (file.size === 0) return { ok: false, reason: "Plik jest pusty." };
+  if (file.size > MAX_MODEL_FILE_SIZE) {
     return {
       ok: false,
-      reason: `Nieobsługiwany format${ext ? ` .${ext}` : ""}. Akceptujemy: ${ACCEPTED_CAD_EXTENSIONS.map((e) => e.toUpperCase()).join(", ")}.`,
+      reason: `Plik jest za duży (${formatFileSize(file.size)}). Maksymalny rozmiar to ${formatFileSize(MAX_MODEL_FILE_SIZE)}.`,
     };
-  }
-  if (file.size === 0) {
-    return { ok: false, reason: "Plik jest pusty." };
-  }
-  if (file.size > MAX_CAD_FILE_SIZE) {
-    return { ok: false, reason: `Plik jest za duży (${formatFileSize(file.size)}). Maksymalny rozmiar to 50 MB.` };
   }
   return { ok: true, extension: ext };
 }
@@ -46,9 +51,4 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${sizeFormatter.format(bytes / 1024)} KB`;
   return `${sizeFormatter.format(bytes / (1024 * 1024))} MB`;
-}
-
-/** Czy format zawiera bryłę 3D (STEP/IGES/STL/OBJ), czy rysunek 2D (DXF). */
-export function isSolidModel(ext: CadExtension): boolean {
-  return ext !== "dxf";
 }

@@ -39,12 +39,14 @@ src/
                           BlueprintAnnotation, TechnicalSection, AnimatedDrawing
     illustrations/        części CNC generowane z geometrii izometrycznej (SVG)
   features/
-    configurator/         stan konfiguratora (kontekst), dropzone, podgląd, parametry
-    cad-files/            walidacja plików CAD (formaty, 50 MB, limit plików)
-    materials/            katalog materiałów, gatunków i wykończeń
-    quotes/               model zapytania i wyceny, punkt wysyłki (jeszcze niepodłączony)
+    cad-files/            limity i formaty (config.ts), walidacja, parser STL + Web Worker
+    geometry/             analiza siatki (gabaryty, topologia, objętość), jednostki
+    viewer-3d/            viewer Three.js / React Three Fiber (ładowany leniwie)
+    configurator/         stan, opcje zamówienia, migawka konfiguracji, komponenty UI
+    inquiry/              formularz zapytania, walidacja, punkt integracji API
+    pricing/              typy przyszłego silnika wycen (bez implementacji)
+    materials/            katalog materiałów (sekcja „Wybierz materiał”)
     orders/               model zamówienia
-    viewer-3d/            kontrakt przyszłego viewera Three.js i tryby widoku
   lib/
     geometry/iso.ts       rzut izometryczny, walce, otoczki — źródło ilustracji
     api/client.ts         punkt integracji z backendem
@@ -59,12 +61,27 @@ w każdej rozdzielczości i obsługują tryby: cieniowany, wymiary, przekrój, s
 Linie rysunku technicznego rysują się w czasie (`AnimatedDrawing` + `drawProps`) po wejściu
 w widok. Wszystkie animacje respektują `prefers-reduced-motion`.
 
-## Stan funkcji
+## Konfigurator CNC
 
-Działa: konfigurator (upload z walidacją, lista plików, parametry, synchronizacja z kartami
-materiałów, tryby widoku i zoom podglądu, walidacja zapytania), wyszukiwarka sekcji, menu
-mobilne, galerie przewijane strzałkami, walidacja newslettera.
+Przepływ: plik STL → analiza w Web Workerze → podgląd 3D → jednostki → parametry → podsumowanie → formularz zapytania.
 
-Demonstracyjne / do podłączenia: wysyłka zapytań i newslettera (nic nie jest wysyłane),
-podgląd 3D plików klienta (model poglądowy), opinie klientów (oznaczony układ), galeria
-realizacji (wizualizacje), podstrony prawne i firmowe, profile społecznościowe.
+- **Formaty:** wyłącznie STL (binarny i ASCII). Limity w [`src/features/cad-files/config.ts`](src/features/cad-files/config.ts).
+  STEP/IGES wymagają Open CASCADE (WASM w workerze lub konwersja na serwerze) — pliki te są rozpoznawane i odrzucane z konkretnym komunikatem.
+- **Analiza:** bounding box, pole powierzchni, topologia (krawędzie brzegowe, niemanifoldowe, niespójna orientacja).
+  Objętość tylko dla siatki zamkniętej i spójnej — w przeciwnym razie „nie do ustalenia” z podanym powodem.
+- **Jednostki:** STL ich nie zapisuje — użytkownik wybiera mm/cm/m/cal i musi je potwierdzić przed zapytaniem.
+- **Viewer:** Three.js + React Three Fiber, ładowany dopiero po wczytaniu modelu, `frameloop="demand"`,
+  orbit/zoom/pan (także dotyk), reset kamery, widok pełny/siatka, wymiary gabarytowe, zwalnianie geometrii przy usunięciu.
+- **Zapytanie:** formularz z walidacją; wysyłka nieaktywna (`submitInquiry` zwraca `not-connected`), dane nie są zapisywane.
+
+### Testowanie
+
+1. `npm run dev`, przejdź do sekcji „Konfigurator CNC”.
+2. Przeciągnij plik STL (np. eksport z dowolnego CAD). Sprawdź wymiary, objętość i status siatki.
+3. Obracaj model (przeciągnij), przybliżaj (kółko/szczypanie), przesuwaj (prawy przycisk/dwa palce), użyj „Reset kamery”, „Siatka”, „Wymiary”.
+4. Zmień jednostki i potwierdź je, ustaw parametry, kliknij „Przejdź do zapytania”, wypełnij formularz.
+
+## Wymaga backendu
+
+Wysyłka zapytań i plików (magazyn plików, API, e-mail), wyceny (silnik po stronie serwera — `src/features/pricing/types.ts`),
+konwersja STEP, konta klientów, zamówienia i płatności, newsletter.

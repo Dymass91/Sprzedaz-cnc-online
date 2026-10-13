@@ -1,5 +1,3 @@
-import type { Quote } from "@/features/quotes/types";
-
 /**
  * Model zamówienia — fundament pod przyszły moduł zamówień i płatności.
  * Produkcję realizują współpracujące zakłady; VEXOR organizuje proces.
@@ -26,7 +24,8 @@ export type ShippingAddress = {
 
 export type Order = {
   id: string;
-  quoteId: Quote["id"];
+  /** Zapytanie ofertowe, z którego powstało zamówienie. */
+  inquiryId: string;
   status: OrderStatus;
   shippingAddress: ShippingAddress;
   createdAt: string;

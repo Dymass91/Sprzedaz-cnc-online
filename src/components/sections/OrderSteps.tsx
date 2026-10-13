@@ -5,7 +5,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { ArrowRightIcon, CubeIcon, QuoteSheetIcon, SlidersIcon, UploadCloudIcon } from "@/components/ui/icons";
 
 const steps = [
-  { icon: UploadCloudIcon, title: "Prześlij projekt", text: "STEP, STP, STL, IGES, DXF lub OBJ" },
+  { icon: UploadCloudIcon, title: "Prześlij projekt", text: "Model 3D w formacie STL (STEP wkrótce)" },
   { icon: SlidersIcon, title: "Wybierz parametry", text: "Materiał, ilość, tolerancje, wykończenie" },
   { icon: QuoteSheetIcon, title: "Otrzymaj wycenę", text: "Cenę i termin przygotujemy na podstawie projektu" },
   { icon: CubeIcon, title: "Zamów i czekaj na dostawę", text: "Produkcja i wysyłka na terenie całej Polski" },

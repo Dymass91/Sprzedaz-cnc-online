@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "wycena CNC online",
     "części z aluminium",
     "części ze stali",
-    "STEP",
+    "STL",
     "prototypy",
   ],
   alternates: { canonical: "/" },
