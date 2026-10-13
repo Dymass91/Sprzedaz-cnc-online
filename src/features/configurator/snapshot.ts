@@ -1,3 +1,4 @@
+import type { ModelFormat } from "@/features/cad-files/config";
 import { unitToMm, type LengthUnit } from "@/features/geometry/units";
 import type { MeshTopology } from "@/features/geometry/types";
 import type { ConfiguratorState } from "./ConfiguratorContext";
@@ -24,7 +25,7 @@ export type ConfigurationSnapshot = {
   model: {
     fileName: string;
     fileSize: number;
-    format: "stl";
+    format: ModelFormat;
     triangleCount: number;
     unit: LengthUnit;
     unitConfirmed: boolean;
@@ -47,11 +48,11 @@ export function buildConfigurationSnapshot(state: ConfiguratorState): Configurat
   let model: ConfigurationSnapshot["model"] = null;
   if (slot.status === "ready") {
     const { analysis } = slot.model;
-    const f = unitToMm(state.unit);
+    const f = slot.model.unitsFromFile ? 1 : unitToMm(state.unit);
     model = {
       fileName: slot.model.fileName,
       fileSize: slot.model.fileSize,
-      format: "stl",
+      format: slot.model.format,
       triangleCount: analysis.triangleCount,
       unit: state.unit,
       unitConfirmed: state.unitConfirmed,
@@ -84,7 +85,7 @@ export function buildConfigurationSnapshot(state: ConfiguratorState): Configurat
 /** Co jeszcze blokuje przejście do zapytania. */
 export function getInquiryBlockers(snapshot: ConfigurationSnapshot): string[] {
   const blockers: string[] = [];
-  if (!snapshot.model) blockers.push("Wgraj plik STL z modelem części.");
+  if (!snapshot.model) blockers.push("Wgraj plik STEP lub STL z modelem części.");
   else if (!snapshot.model.unitConfirmed) blockers.push("Potwierdź jednostki modelu (STL nie zapisuje jednostek).");
   if (snapshot.quantity === null) blockers.push("Podaj poprawną liczbę sztuk.");
   return blockers;

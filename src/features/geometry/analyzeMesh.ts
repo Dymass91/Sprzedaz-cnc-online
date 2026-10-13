@@ -42,6 +42,23 @@ export function analyzeMesh(positions: Float32Array): MeshAnalysis {
   const vertexCount = vertexIds.size;
   vertexIds.clear();
 
+  // Spójne powłoki: union-find na zgrzanych wierzchołkach
+  const parent = new Uint32Array(vertexCount);
+  for (let i = 0; i < vertexCount; i++) parent[i] = i;
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+  const usedVertex = new Uint8Array(vertexCount);
+
   // Krawędzie: liczba wystąpień i suma orientacji (+1 / −1)
   const edgeCount = new Map<number, number>();
   const edgeOrientation = new Map<number, number>();
@@ -68,6 +85,9 @@ export function analyzeMesh(positions: Float32Array): MeshAnalysis {
       continue;
     }
     surfaceArea += doubleArea / 2;
+    union(a, b);
+    union(b, c);
+    usedVertex[a] = usedVertex[b] = usedVertex[c] = 1;
     signedVolume6 += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
 
     for (const [p, q] of [
@@ -82,6 +102,9 @@ export function analyzeMesh(positions: Float32Array): MeshAnalysis {
       edgeOrientation.set(key, (edgeOrientation.get(key) ?? 0) + (p < q ? 1 : -1));
     }
   }
+
+  let shellCount = 0;
+  for (let i = 0; i < vertexCount; i++) if (usedVertex[i] && find(i) === i) shellCount++;
 
   let boundaryEdges = 0;
   let nonManifoldEdges = 0;
@@ -107,6 +130,7 @@ export function analyzeMesh(positions: Float32Array): MeshAnalysis {
     max,
     size,
     surfaceArea,
+    shellCount,
     topology,
     volume: computeVolume(signedVolume6 / 6, topology, size),
   };

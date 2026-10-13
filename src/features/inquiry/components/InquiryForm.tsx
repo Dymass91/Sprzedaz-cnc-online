@@ -7,6 +7,7 @@ import { AlertIcon, CheckCircleIcon, CloseIcon, InfoIcon } from "@/components/ui
 import { useConfigurator } from "@/features/configurator/ConfiguratorContext";
 import { ConfigurationSummary } from "@/features/configurator/components/ConfigurationSummary";
 import { buildConfigurationSnapshot } from "@/features/configurator/snapshot";
+import { buildProjectRecord } from "@/features/project/buildProjectRecord";
 import { submitInquiry } from "../api";
 import type { InquiryContact, InquiryErrors, InquiryField, InquirySubmitResult } from "../types";
 import { emptyContact, NOTES_MAX_LENGTH, validateContact } from "../validation";
@@ -51,7 +52,7 @@ const inputClass =
  * w pamięci komponentu (bez localStorage) i — dopóki nie ma backendu —
  * nigdzie nie są wysyłane.
  */
-export function InquiryForm() {
+export function InquiryForm({ hidden = false }: { hidden?: boolean }) {
   const { state, setInquiryOpen } = useConfigurator();
   const [contact, setContact] = useState<InquiryContact>(emptyContact);
   const [errors, setErrors] = useState<InquiryErrors>({});
@@ -61,6 +62,10 @@ export function InquiryForm() {
   const base = useId();
   const id = (f: InquiryField) => `${base}-${f}`;
   const snapshot = useMemo(() => buildConfigurationSnapshot(state), [state]);
+  const project = useMemo(
+    () => (state.model.status === "ready" ? buildProjectRecord(state.model.model, state.unit, state.unitConfirmed, snapshot) : null),
+    [state.model, state.unit, state.unitConfirmed, snapshot],
+  );
 
   const update = <K extends InquiryField>(field: K, value: InquiryContact[K]) => {
     setContact((c) => ({ ...c, [field]: value }));
@@ -84,7 +89,7 @@ export function InquiryForm() {
       return;
     }
     setSubmitting(true);
-    const res = await submitInquiry({ contact, configuration: snapshot, modelFileId: null });
+    const res = await submitInquiry({ contact, configuration: snapshot, project, modelFileId: null });
     setSubmitting(false);
     setResult(res);
   };
@@ -92,6 +97,7 @@ export function InquiryForm() {
   return (
     <section
       id="zapytanie"
+      hidden={hidden}
       aria-labelledby={`${base}-title`}
       className="relative mt-8 animate-fade-up scroll-mt-[calc(var(--header-height)+16px)] rounded-lg border border-line bg-surface p-5 shadow-card sm:p-7"
     >

@@ -89,11 +89,11 @@ export function ModelPreview() {
             {slot.status === "loading" ? (
               <p role="status" className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-2 text-[13px] font-medium text-ink-700">
                 <span className="size-4 animate-spin rounded-full border-2 border-line-strong border-t-ink-800 motion-reduce:animate-none" />
-                Analiza geometrii modelu…
+                {slot.stage === "engine" ? "Ładowanie silnika CAD…" : slot.stage === "reading" ? "Odczyt geometrii B-Rep…" : "Analiza geometrii modelu…"}
               </p>
             ) : (
               <p className="absolute inset-x-6 bottom-5 text-center text-[12.5px] text-ink-600">
-                Wgraj plik STL, aby obejrzeć swoją część w 3D i sprawdzić jej wymiary.
+                Wgraj plik STEP lub STL, aby obejrzeć swoją część w 3D i sprawdzić jej wymiary.
               </p>
             )}
           </figure>

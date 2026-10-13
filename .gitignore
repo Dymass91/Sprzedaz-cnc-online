@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# silnik CAD kopiowany z node_modules przy dev/build (scripts/copy-occt.mjs)
+/public/vendor/

@@ -27,6 +27,8 @@ export type MeshAnalysis = {
   /** Wymiary bounding box (X, Y, Z). */
   size: Vec3Tuple;
   surfaceArea: number;
+  /** Liczba spójnych powłok siatki (rozłącznych brył) — z topologii trójkątów. */
+  shellCount: number;
   topology: MeshTopology;
   volume: VolumeResult;
 };

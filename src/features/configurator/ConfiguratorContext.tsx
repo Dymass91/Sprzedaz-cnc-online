@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
-import { loadModelFile, ModelLoadError, type LoadedModel } from "@/features/cad-files/loadModelFile";
+import { loadModelFile, ModelLoadError, type LoadedModel, type LoadStage } from "@/features/cad-files/loadModelFile";
 import type { LengthUnit } from "@/features/geometry/units";
 import type { MaterialId as MaterialCategory } from "@/features/materials/data";
 import {
@@ -15,9 +15,9 @@ import {
 
 export type ModelSlot =
   | { status: "empty" }
-  | { status: "loading"; fileName: string; fileSize: number }
+  | { status: "loading"; fileName: string; fileSize: number; stage: LoadStage }
   | { status: "ready"; model: LoadedModel }
-  | { status: "error"; fileName: string | null; message: string };
+  | { status: "error"; fileName: string | null; message: string; retryable: boolean };
 
 export type ConfiguratorState = {
   model: ModelSlot;
@@ -36,8 +36,9 @@ export type ConfiguratorState = {
 
 type Action =
   | { type: "model-loading"; fileName: string; fileSize: number }
+  | { type: "model-stage"; stage: LoadStage }
   | { type: "model-ready"; model: LoadedModel }
-  | { type: "model-error"; fileName: string | null; message: string }
+  | { type: "model-error"; fileName: string | null; message: string; retryable: boolean }
   | { type: "model-remove" }
   | { type: "set-unit"; unit: LengthUnit }
   | { type: "confirm-unit"; confirmed: boolean }
@@ -63,12 +64,16 @@ const initialState: ConfiguratorState = {
 function reducer(state: ConfiguratorState, action: Action): ConfiguratorState {
   switch (action.type) {
     case "model-loading":
-      return { ...state, model: { status: "loading", fileName: action.fileName, fileSize: action.fileSize } };
+      return { ...state, model: { status: "loading", fileName: action.fileName, fileSize: action.fileSize, stage: "reading-file" } };
+    case "model-stage":
+      return state.model.status === "loading" ? { ...state, model: { ...state.model, stage: action.stage } } : state;
     case "model-ready":
-      // Nowy model = jednostki trzeba potwierdzić od nowa.
-      return { ...state, model: { status: "ready", model: action.model }, unitConfirmed: false };
+      // STEP zapisuje jednostki (geometria jest już w mm). STL — jednostki trzeba potwierdzić od nowa.
+      return action.model.unitsFromFile
+        ? { ...state, model: { status: "ready", model: action.model }, unit: "mm", unitConfirmed: true }
+        : { ...state, model: { status: "ready", model: action.model }, unitConfirmed: false };
     case "model-error":
-      return { ...state, model: { status: "error", fileName: action.fileName, message: action.message } };
+      return { ...state, model: { status: "error", fileName: action.fileName, message: action.message, retryable: action.retryable } };
     case "model-remove":
       return { ...state, model: { status: "empty" }, unitConfirmed: false, inquiryOpen: false };
     case "set-unit":
@@ -97,6 +102,8 @@ type ConfiguratorContextValue = {
   state: ConfiguratorState;
   loadFile: (file: File) => void;
   removeModel: () => void;
+  /** Ponowna analiza ostatnio wybranego pliku (po błędzie lub anulowaniu). */
+  retry: () => void;
   setUnit: (unit: LengthUnit) => void;
   confirmUnit: (confirmed: boolean) => void;
   setMaterial: (material: MaterialOptionId) => void;
@@ -114,6 +121,7 @@ const ConfiguratorContext = createContext<ConfiguratorContextValue | null>(null)
 export function ConfiguratorProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const loadController = useRef<AbortController | null>(null);
+  const lastFile = useRef<File | null>(null);
 
   useEffect(() => () => loadController.current?.abort(), []);
 
@@ -122,15 +130,22 @@ export function ConfiguratorProvider({ children }: { children: ReactNode }) {
     loadController.current?.abort();
     const controller = new AbortController();
     loadController.current = controller;
+    lastFile.current = file;
     dispatch({ type: "model-loading", fileName: file.name, fileSize: file.size });
-    loadModelFile(file, controller.signal)
+    loadModelFile(file, { signal: controller.signal, onStage: (stage) => !controller.signal.aborted && dispatch({ type: "model-stage", stage }) })
       .then((model) => {
         if (!controller.signal.aborted) dispatch({ type: "model-ready", model });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        const message = error instanceof ModelLoadError ? error.message : "Nie udało się wczytać modelu.";
-        dispatch({ type: "model-error", fileName: file.name, message });
+        const known = error instanceof ModelLoadError;
+        dispatch({
+          type: "model-error",
+          fileName: file.name,
+          message: known ? error.message : "Nie udało się wczytać modelu.",
+          // Błędy formatu/zawartości się nie zmienią; błędy środowiska (pamięć, czas, sieć) — mogą.
+          retryable: known ? error.retryable : true,
+        });
       });
   }, []);
 
@@ -139,11 +154,16 @@ export function ConfiguratorProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "model-remove" });
   }, []);
 
+  const retry = useCallback(() => {
+    if (lastFile.current) loadFile(lastFile.current);
+  }, [loadFile]);
+
   const value = useMemo<ConfiguratorContextValue>(
     () => ({
       state,
       loadFile,
       removeModel,
+      retry,
       setUnit: (unit) => dispatch({ type: "set-unit", unit }),
       confirmUnit: (confirmed) => dispatch({ type: "confirm-unit", confirmed }),
       setMaterial: (material) => dispatch({ type: "set-material", material }),
@@ -154,7 +174,7 @@ export function ConfiguratorProvider({ children }: { children: ReactNode }) {
       setLeadTime: (leadTime) => dispatch({ type: "set-lead-time", leadTime }),
       setInquiryOpen: (open) => dispatch({ type: "set-inquiry-open", open }),
     }),
-    [state, loadFile, removeModel],
+    [state, loadFile, removeModel, retry],
   );
 
   return <ConfiguratorContext.Provider value={value}>{children}</ConfiguratorContext.Provider>;

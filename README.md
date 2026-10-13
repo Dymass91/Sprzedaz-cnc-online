@@ -9,7 +9,7 @@ Wzorzec projektu graficznego: [`docs/reference/vexor-homepage-reference.png`](do
 npm install
 npm run dev      # http://localhost:3000
 npm run lint
-npm run build    # eksport statyczny do out/
+npm run build    # kopiuje silnik CAD do public/vendor i eksportuje stronę do out/
 ```
 
 Zmienne środowiskowe (opcjonalne):
@@ -39,7 +39,8 @@ src/
                           BlueprintAnnotation, TechnicalSection, AnimatedDrawing
     illustrations/        części CNC generowane z geometrii izometrycznej (SVG)
   features/
-    cad-files/            limity i formaty (config.ts), walidacja, parser STL + Web Worker
+    cad-files/            limity i formaty (config.ts), walidacja, parser STL, worker CAD (STEP/OCCT)
+    project/              rekord projektu (plik + parametry + analiza CAD) dla wyceny
     geometry/             analiza siatki (gabaryty, topologia, objętość), jednostki
     viewer-3d/            viewer Three.js / React Three Fiber (ładowany leniwie)
     configurator/         stan, opcje zamówienia, migawka konfiguracji, komponenty UI
@@ -63,25 +64,57 @@ w widok. Wszystkie animacje respektują `prefers-reduced-motion`.
 
 ## Konfigurator CNC
 
-Przepływ: plik STL → analiza w Web Workerze → podgląd 3D → jednostki → parametry → podsumowanie → formularz zapytania.
+Przepływ: plik STEP/STP lub STL → analiza w Web Workerze → podgląd 3D → parametry → podsumowanie → formularz zapytania.
 
-- **Formaty:** wyłącznie STL (binarny i ASCII). Limity w [`src/features/cad-files/config.ts`](src/features/cad-files/config.ts).
-  STEP/IGES wymagają Open CASCADE (WASM w workerze lub konwersja na serwerze) — pliki te są rozpoznawane i odrzucane z konkretnym komunikatem.
-- **Analiza:** bounding box, pole powierzchni, topologia (krawędzie brzegowe, niemanifoldowe, niespójna orientacja).
-  Objętość tylko dla siatki zamkniętej i spójnej — w przeciwnym razie „nie do ustalenia” z podanym powodem.
-- **Jednostki:** STL ich nie zapisuje — użytkownik wybiera mm/cm/m/cal i musi je potwierdzić przed zapytaniem.
-- **Viewer:** Three.js + React Three Fiber, ładowany dopiero po wczytaniu modelu, `frameloop="demand"`,
-  orbit/zoom/pan (także dotyk), reset kamery, widok pełny/siatka, wymiary gabarytowe, zwalnianie geometrii przy usunięciu.
-- **Zapytanie:** formularz z walidacją; wysyłka nieaktywna (`submitInquiry` zwraca `not-connected`), dane nie są zapisywane.
+### Architektura analizy CAD
+
+| Format | Silnik | Gdzie działa |
+| --- | --- | --- |
+| STEP / STP (ISO 10303-21) | Open CASCADE w WebAssembly — [`occt-import-js`](https://github.com/kovacsv/occt-import-js) 0.0.23 | Web Worker w przeglądarce |
+| STL (binarny, ASCII) | własny parser | Web Worker w przeglądarce |
+
+Dlaczego w przeglądarce, a nie na serwerze:
+
+- **Cloudflare Pages** to hosting statyczny — nie uruchomi pythonOCC ani natywnego OCCT. Plik WASM (7,6 MB) mieści się w limicie 25 MiB na plik.
+- **Poufność:** projekt klienta nie opuszcza jego urządzenia — brak uploadu i usług zewnętrznych.
+- Silnik jest ładowany dopiero przy pierwszym pliku STEP i utrzymywany w workerze przez sesję.
+
+Przebieg: STEP → odczyt B-Rep i triangulacja OCCT (jednostki z pliku → mm, ugięcie 0,1% przekątnej) →
+siatka bez indeksów (ten sam format co STL) → wspólna analiza (`src/features/geometry/analyzeMesh.ts`) → wspólny viewer.
+
+### Co jest analizowane
+
+- Wymiary gabarytowe, pole powierzchni, liczba rozłącznych brył, liczba obiektów i ścian B-Rep (STEP).
+- Objętość — tylko dla geometrii zamkniętej, z triangulacji (przybliżenie; dla kostki 10 mm wynik 1000,000 mm³).
+- **Otwory nie są rozpoznawane** — `occt-import-js` udostępnia triangulację, ale nie typy powierzchni B-Rep. Panel pokazuje „do oceny technologa”.
+- Każda wartość ma pochodzenie (`automatic` / `user` / `unavailable`) i status weryfikacji `unverified` — zob. `src/features/project/types.ts`.
+
+### Bezpieczeństwo i limity (`src/features/cad-files/config.ts`)
+
+- Format rozpoznawany po zawartości (nagłówek `ISO-10303-21;`, struktura STL), nie po rozszerzeniu.
+- STEP do 30 MB, STL do 50 MB, maks. 2,5 mln trójkątów, limit czasu analizy STEP 120 s (worker jest wtedy kończony).
+- Anulowanie i ponowienie analizy; błędy plików (uszkodzony, fałszywy, STEP XML, brak geometrii) mają osobne komunikaty.
+- Modele nie są nigdzie zapisywane ani wysyłane; formularz trzyma dane wyłącznie w pamięci.
+
+### Wymagania wdrożeniowe
+
+- `npm ci && npm run build` — skrypt `prebuild` kopiuje silnik z `node_modules/occt-import-js/dist` do `public/vendor/occt-import-js/<wersja>/`
+  (katalog jest w `.gitignore`). Wersja w `CAD_ENGINE` (`config.ts`) musi odpowiadać wersji pakietu.
+- Serwer musi podawać `.wasm` z typem `application/wasm` (Cloudflare Pages robi to domyślnie).
+- Licencja: `occt-import-js` i Open CASCADE są na **LGPL-2.1** — biblioteka jest dystrybuowana bez zmian, jako osobne pliki,
+  razem z tekstami licencji (`public/vendor/.../license.*.txt`).
+- Turbopack kopiuje dodatkowo źródła workerów (`*.worker.ts`) do `_next/static/media` — nie zawierają danych ani sekretów.
 
 ### Testowanie
 
-1. `npm run dev`, przejdź do sekcji „Konfigurator CNC”.
-2. Przeciągnij plik STL (np. eksport z dowolnego CAD). Sprawdź wymiary, objętość i status siatki.
-3. Obracaj model (przeciągnij), przybliżaj (kółko/szczypanie), przesuwaj (prawy przycisk/dwa palce), użyj „Reset kamery”, „Siatka”, „Wymiary”.
-4. Zmień jednostki i potwierdź je, ustaw parametry, kliknij „Przejdź do zapytania”, wypełnij formularz.
+1. `npm run dev`, sekcja „Konfigurator CNC”.
+2. Pliki STEP do testów: `node_modules/occt-import-js/test/testfiles/` (np. `cube-10x10mm/Cube 10x10.stp`, `cax-if/as1-oc-214.stp`).
+3. Sprawdź panel „Analiza projektu”, podgląd (obrót, zoom, reset, siatka, wymiary), parametry, „Przejdź do zapytania”.
 
-## Wymaga backendu
+## Wymaga backendu (kolejne etapy)
 
-Wysyłka zapytań i plików (magazyn plików, API, e-mail), wyceny (silnik po stronie serwera — `src/features/pricing/types.ts`),
-konwersja STEP, konta klientów, zamówienia i płatności, newsletter.
+- **Usługa CAD na serwerze** (kontener z OCCT, np. Cloudflare Containers / Fly.io / VPS — nie Pages):
+  dokładna objętość (`GProp`), rozpoznawanie otworów i gwintów, cechy obróbkowe, STEP → glTF, dokumentacja PDF.
+  Powinna ponawiać analizę zamiast ufać danym z przeglądarki.
+- Wysyłka zapytań i plików (prywatny magazyn, np. R2 z podpisanymi adresami), wyceny (`src/features/pricing/types.ts`),
+  konta, zamówienia, płatności, newsletter.

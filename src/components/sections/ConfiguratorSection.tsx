@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { useConfigurator } from "@/features/configurator/ConfiguratorContext";
-import { GeometryPanel } from "@/features/configurator/components/GeometryPanel";
+import { AnalysisPanel } from "@/features/configurator/components/AnalysisPanel";
 import { ModelPreview } from "@/features/configurator/components/ModelPreview";
 import { ModelUpload } from "@/features/configurator/components/ModelUpload";
 import { ParametersPanel } from "@/features/configurator/components/ParametersPanel";
@@ -11,6 +12,9 @@ import { InquiryForm } from "@/features/inquiry/components/InquiryForm";
 
 export function ConfiguratorSection() {
   const { state } = useConfigurator();
+  // Po pierwszym otwarciu formularz zostaje w drzewie (stan React bez localStorage).
+  const [inquiryVisited, setInquiryVisited] = useState(false);
+  if (state.inquiryOpen && !inquiryVisited) setInquiryVisited(true);
   return (
     <section id="konfigurator" aria-labelledby="konfigurator-title" className="relative py-9 lg:py-12">
       <Container>
@@ -19,7 +23,7 @@ export function ConfiguratorSection() {
           <SectionHeading
             id="konfigurator-title"
             title="Konfigurator CNC"
-            description="Wgraj plik STL, obejrzyj model w 3D, ustaw parametry i przygotuj zapytanie o wycenę."
+            description="Wgraj plik STEP lub STL, obejrzyj model w 3D, ustaw parametry i przygotuj zapytanie o wycenę."
             className="lg:col-span-2 lg:mb-2"
           />
           <div className="lg:col-start-1 lg:row-start-2">
@@ -29,13 +33,14 @@ export function ConfiguratorSection() {
             <ModelPreview />
           </div>
           <div className="lg:col-start-1 lg:row-start-3 lg:self-start">
-            <GeometryPanel />
+            <AnalysisPanel />
           </div>
           <div className="lg:col-start-3 lg:row-span-3 lg:row-start-1">
             <ParametersPanel />
           </div>
         </div>
-        {state.inquiryOpen ? <InquiryForm /> : null}
+        {/* Formularz pozostaje zamontowany po zamknięciu — wpisane dane nie giną (tylko pamięć, bez zapisu). */}
+        {state.inquiryOpen || inquiryVisited ? <InquiryForm hidden={!state.inquiryOpen} /> : null}
       </Container>
     </section>
   );

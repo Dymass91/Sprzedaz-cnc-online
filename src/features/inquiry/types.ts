@@ -1,4 +1,5 @@
 import type { ConfigurationSnapshot } from "@/features/configurator/snapshot";
+import type { ProjectRecord } from "@/features/project/types";
 
 export type InquiryContact = {
   fullName: string;
@@ -22,6 +23,8 @@ export type InquiryErrors = Partial<Record<InquiryField, string>>;
 export type InquiryPayload = {
   contact: InquiryContact;
   configuration: ConfigurationSnapshot;
+  /** Pełny rekord projektu (plik, parametry, analiza CAD) — wejście dla przyszłego silnika wycen. */
+  project: ProjectRecord | null;
   /** Identyfikator pliku w magazynie — po wdrożeniu uploadu. */
   modelFileId: string | null;
 };

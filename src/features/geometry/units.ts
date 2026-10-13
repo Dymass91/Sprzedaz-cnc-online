@@ -52,6 +52,14 @@ export function approx(text: string): string {
   return text.startsWith("<") ? text : `≈ ${text}`;
 }
 
+/** Polska odmiana liczebnika: 1 bryła, 2–4 bryły, 5+ brył (12–14 → brył). */
+export function pluralPl(n: number, one: string, few: string, many: string): string {
+  if (n === 1) return one;
+  const d = n % 10;
+  const t = n % 100;
+  return d >= 2 && d <= 4 && (t < 12 || t > 14) ? few : many;
+}
+
 export function formatCount(value: number): string {
   return intFormatter.format(value);
 }

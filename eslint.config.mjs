@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Biblioteki zewnętrzne kopiowane przy buildzie (scripts/copy-occt.mjs)
+    "public/vendor/**",
   ]),
 ]);
 
