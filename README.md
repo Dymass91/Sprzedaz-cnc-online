@@ -16,7 +16,7 @@ Zmienne środowiskowe (opcjonalne):
 
 | Zmienna | Opis |
 | --- | --- |
-| `NEXT_PUBLIC_SITE_URL` | Publiczny adres serwisu (metadane, sitemap). Domyślnie `http://localhost:3000`. |
+| `NEXT_PUBLIC_SITE_URL` | Publiczny adres serwisu (metadane). Domyślnie `https://vexor-cnc.pages.dev`. |
 | `NEXT_PUBLIC_API_URL` | Adres przyszłego backendu. Bez niego interfejs informuje, że wysyłka nie jest jeszcze aktywna. |
 
 ## Hosting
@@ -29,7 +29,7 @@ Push na `main` uruchamia [deploy.yml](.github/workflows/deploy.yml) — wymaga s
 
 ```
 src/
-  app/                    layout (fonty, metadane PL), strona główna, robots, sitemap, ikona
+  app/                    layout (fonty, metadane PL), strona główna, ikona (robots.txt w public/)
   config/site.ts          nawigacja, stopka, linki prawne i społecznościowe
   components/
     ui/                   przyciski, ikony, select, nagłówki sekcji, przewijana lista

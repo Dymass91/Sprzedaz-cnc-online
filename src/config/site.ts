@@ -11,7 +11,7 @@ export const siteConfig = {
   description:
     "Zamów części wykonywane metodą obróbki CNC przez internet. Prześlij projekt CAD, wybierz materiał, tolerancje i wykończenie, a my zorganizujemy produkcję i dostawę w całej Polsce.",
   locale: "pl_PL",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://vexor-cnc.pages.dev",
   /** Rok w stopce — stała, aby nie wywoływać `new Date()` podczas prerenderu. */
   copyrightYear: 2026,
 } as const;
