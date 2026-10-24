@@ -9,6 +9,7 @@ Wzorzec projektu graficznego: [`docs/reference/vexor-homepage-reference.png`](do
 npm install
 npm run dev      # http://localhost:3000
 npm run lint
+npm test         # testy kinematyki silnika (node --test)
 npm run build    # kopiuje silnik CAD do public/vendor i eksportuje stronę do out/
 ```
 
@@ -35,6 +36,7 @@ src/
     ui/                   przyciski, ikony, select, nagłówki sekcji, przewijana lista
     layout/               nagłówek (menu mobilne, wyszukiwarka, panel konta), stopka, newsletter
     sections/             sekcje strony głównej (każda w osobnym pliku)
+    hero-engine/          animowany silnik R4 w hero (scena 3D, materiały „ołówek”, sterowanie)
     engineering/          EngineeringGrid, DimensionLine, TechnicalCrosshair,
                           BlueprintAnnotation, TechnicalSection, AnimatedDrawing
     illustrations/        części CNC generowane z geometrii izometrycznej (SVG)
@@ -50,6 +52,7 @@ src/
     orders/               model zamówienia
   lib/
     geometry/iso.ts       rzut izometryczny, walce, otoczki — źródło ilustracji
+    engine/               kinematyka mechanizmu korbowego + rig części (kontrakt GLB), testy
     api/client.ts         punkt integracji z backendem
 ```
 
@@ -61,6 +64,35 @@ w każdej rozdzielczości i obsługują tryby: cieniowany, wymiary, przekrój, s
 
 Linie rysunku technicznego rysują się w czasie (`AnimatedDrawing` + `drawProps`) po wejściu
 w widok. Wszystkie animacje respektują `prefers-reduced-motion`.
+
+## Hero: silnik R4 „rysunek ożywa”
+
+Przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem (`src/components/hero-engine/`).
+
+| Plik | Rola |
+| --- | --- |
+| `EngineHero.tsx` | decyzja o ładowaniu, fallback SVG, pauza poza ekranem, `prefers-reduced-motion` |
+| `EngineScene.tsx` | `<Canvas>` (ładowany dynamicznie, tylko klient), kamera, OrbitControls, reset |
+| `EngineAssembly.tsx` | model proceduralny + oś czasu: szkic → cieniowanie → start wału → praca |
+| `engineGeometry.ts` | geometria: blok w przekroju, wał z przeciwwagami, korbowody, tłoki |
+| `sketchMaterials.ts` | shadery: papier + kreskowanie, przekrój 45°, rysowane linie, kontury sylwetek |
+| `EngineControls.tsx` | pauza/wznowienie, reset widoku, suwak obrotów |
+| `src/lib/engine/kinematics.ts` | kinematyka korbowo-tłokowa (r = 40 mm, l = 135 mm, fazy 0°/180°/180°/0°) |
+| `src/lib/engine/rig.ts` | `applyEngineState` — wszystkie części z jednego kąta wału; kontrakt nazw dla GLB |
+
+- Ładowanie: desktop — w wolnej chwili przeglądarki (`requestIdleCallback`); telefon / oszczędzanie danych — po kliknięciu
+  „Uruchom animację 3D”; brak WebGL — zostaje ilustracja SVG. Three.js nie trafia do początkowego JS strony.
+- Renderowanie: `frameloop` = ciągły tylko podczas wejścia, pracy lub hamowania wału; po pauzie na żądanie; poza ekranem wstrzymany.
+- Rysowanie linii jest rzeczywiste: każdy odcinek krawędzi rysuje się od początku do końca (atrybuty `aT`/`aOrder`).
+  Kontury sylwetek (odwrócona powłoka) i kreskowanie przekroju pojawiają się przez przenikanie.
+- Sterowanie: mysz — obrót (ograniczony do strony przekroju) i zoom; dotyk — jeden palec przewija stronę, dwa palce obracają.
+
+### Docelowy model GLB
+
+`extractEngineParts()` (`src/lib/engine/rig.ts`) wyszukuje węzły: `crankshaft`, `piston_1…4`, `connecting_rod_1…4`, `engine_block`.
+Wymagania: jednostki mm, oś wału = X, cylindry wzdłuż +Y; punkt obrotu wału na jego osi (cyl. 1 w GMP przy obrocie 0);
+korbowód z początkiem w środku stopy i osią wzdłuż +Y; tłok z początkiem w osi sworznia. Wymiary mechanizmu w `PROTOTYPE_RIG`
+muszą odpowiadać modelowi. Testy (`rig.test.ts`) sprawdzają, że koniec korbowodu trafia w sworzeń dla pełnego obrotu.
 
 ## Konfigurator CNC
 

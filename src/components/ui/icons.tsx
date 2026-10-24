@@ -242,6 +242,18 @@ export const AlertIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const PlayIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 5.5v13l10.5-6.5z" />
+  </Icon>
+);
+
+export const PauseIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8.5 5.5v13M15.5 5.5v13" />
+  </Icon>
+);
+
 export const PlusIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 5v14M5 12h14" />

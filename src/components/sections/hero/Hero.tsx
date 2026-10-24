@@ -2,6 +2,7 @@ import { EngineeringGrid } from "@/components/engineering";
 import { ButtonLink } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
 import { CalendarIcon, GaugeIcon, TruckIcon } from "@/components/ui/icons";
+import { EngineHero } from "@/components/hero-engine/EngineHero";
 import { HeroVisual } from "./HeroVisual";
 
 const highlights = [
@@ -54,7 +55,8 @@ export function Hero() {
           </ul>
         </div>
         <div className="relative -mx-4 sm:mx-0 lg:-mr-10 xl:-mr-16">
-          <HeroVisual />
+          {/* Animowany silnik R4; ilustracja SVG to podgląd do czasu załadowania i fallback bez WebGL */}
+          <EngineHero fallback={<HeroVisual />} />
         </div>
       </Container>
     </section>
