@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { cn } from "@/lib/cn";
 import { PlayIcon } from "@/components/ui/icons";
 import { EngineControls, SPEED_RANGE } from "./EngineControls";
+import { DEFAULT_PENCIL_PARAMS, DEFAULT_RENDER_STYLE, type PencilParams, type RenderStyle } from "./pencilStyle";
 
 const EngineScene = dynamic(() => import("./EngineScene"), { ssr: false });
 
@@ -30,6 +31,20 @@ function detectCapability(): Exclude<Capability, "pending"> {
 
 const noopSubscribe = () => () => {};
 
+/** Słabsze urządzenia (dotyk lub ≤ 4 rdzenie): 2 warstwy kreskowania zamiast 3. */
+function detectHatchLayers(): number {
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  const cores = navigator.hardwareConcurrency ?? 8;
+  return coarse || cores <= 4 ? 2 : 3;
+}
+
+/**
+ * Faktura papieru: deterministyczny szum SVG (stały seed), nieruchomy względem ekranu —
+ * kartka pod animowanym rysunkiem. Ledwo widoczna, chłodna (bez efektu „vintage”).
+ */
+const PAPER_TEXTURE =
+  "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27180%27 height=%27180%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.85%27 numOctaves=%272%27 seed=%277%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix values=%270 0 0 0 0.17 0 0 0 0 0.19 0 0 0 0 0.22 0 0 0 0.6 0%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/%3E%3C/svg%3E')";
+
 function subscribeReducedMotion(cb: () => void) {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
   mq.addEventListener("change", cb);
@@ -41,8 +56,18 @@ function subscribeReducedMotion(cb: () => void) {
  * Do czasu załadowania sceny (i gdy WebGL jest niedostępny) widoczny jest
  * `fallback` — dotychczasowa ilustracja SVG renderowana po stronie serwera.
  */
-export function EngineHero({ fallback }: { fallback: ReactNode }) {
+export type EngineHeroProps = {
+  fallback: ReactNode;
+  /** Styl początkowy (domyślnie szkic ołówkiem). */
+  initialStyle?: RenderStyle;
+  /** Strojenie szkicu: kontury, grafit, gęstość kreskowania, papier, nieregularność linii. */
+  pencilParams?: PencilParams;
+};
+
+export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, pencilParams = DEFAULT_PENCIL_PARAMS }: EngineHeroProps) {
   const capability = useSyncExternalStore<Capability>(noopSubscribe, detectCapability, () => "pending");
+  const hatchLayers = useSyncExternalStore(noopSubscribe, detectHatchLayers, () => 3);
+  const [renderStyle, setRenderStyle] = useState<RenderStyle>(initialStyle);
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -97,6 +122,18 @@ export function EngineHero({ fallback }: { fallback: ReactNode }) {
 
   return (
     <div ref={containerRef} className="relative aspect-[720/520] w-full">
+      {ready && renderStyle === "pencil" ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: PAPER_TEXTURE,
+            opacity: 0.05 * pencilParams.paperTextureStrength,
+            maskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
+            WebkitMaskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
+          }}
+        />
+      ) : null}
       {fallbackGone ? null : (
         <div
           className={cn("absolute inset-0 transition-opacity duration-700", ready ? "pointer-events-none opacity-0" : "opacity-100")}
@@ -113,6 +150,9 @@ export function EngineHero({ fallback }: { fallback: ReactNode }) {
             playing={playing}
             speedRpm={speedRpm}
             reducedMotion={reducedMotion}
+            renderStyle={renderStyle}
+            pencilParams={pencilParams}
+            hatchLayers={hatchLayers}
             visible={visible}
             animating={animating}
             resetSignal={resetSignal}
@@ -133,6 +173,8 @@ export function EngineHero({ fallback }: { fallback: ReactNode }) {
             <EngineControls
               playing={playing}
               speedRpm={speedRpm}
+              renderStyle={renderStyle}
+              onRenderStyleChange={setRenderStyle}
               onToggle={toggle}
               onSpeedChange={setSpeedRpm}
               onResetCamera={() => setResetSignal((n) => n + 1)}

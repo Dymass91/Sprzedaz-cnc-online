@@ -6,6 +6,7 @@ import { OrbitControls } from "@react-three/drei";
 import { TOUCH, type PerspectiveCamera } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { EngineAssembly } from "./EngineAssembly";
+import type { PencilParams, RenderStyle } from "./pencilStyle";
 
 /** Ujęcie początkowe: widok 3/4 od strony przekroju, lekko z góry. */
 const CAMERA = { fov: 30, position: [560, 360, 860] as const, target: [20, 80, 0] as const };
@@ -55,6 +56,10 @@ export type EngineSceneProps = {
   playing: boolean;
   speedRpm: number;
   reducedMotion: boolean;
+  renderStyle: RenderStyle;
+  pencilParams: PencilParams;
+  /** Warstwy kreskowania: 2 na słabszych urządzeniach. */
+  hatchLayers: number;
   /** Sekcja widoczna na ekranie — poza ekranem renderowanie jest wstrzymane. */
   visible: boolean;
   /** Pętla ciągła potrzebna (wejście, praca lub hamowanie wału). */
@@ -71,7 +76,8 @@ export default function EngineScene(props: EngineSceneProps) {
   return (
     <Canvas
       frameloop={!visible ? "never" : animating ? "always" : "demand"}
-      dpr={[1, 1.75]}
+      // Tryb ołówka: niższy limit gęstości pikseli — kreski mają własny antyaliasing.
+      dpr={[1, props.renderStyle === "pencil" ? 1.5 : 1.75]}
       camera={{ fov: CAMERA.fov, position: [...CAMERA.position], near: 20, far: 6000 }}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
@@ -85,6 +91,9 @@ export default function EngineScene(props: EngineSceneProps) {
         playing={props.playing}
         speedRpm={props.speedRpm}
         reducedMotion={props.reducedMotion}
+        renderStyle={props.renderStyle}
+        pencilParams={props.pencilParams}
+        hatchLayers={props.hatchLayers}
         onIntroDone={props.onIntroDone}
         onStopped={props.onStopped}
       />

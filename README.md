@@ -75,7 +75,9 @@ Przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem (`src
 | `EngineScene.tsx` | `<Canvas>` (ładowany dynamicznie, tylko klient), kamera, OrbitControls, reset |
 | `EngineAssembly.tsx` | model proceduralny + oś czasu: szkic → cieniowanie → start wału → praca |
 | `engineGeometry.ts` | geometria: blok w przekroju, wał z przeciwwagami, korbowody, tłoki |
-| `sketchMaterials.ts` | shadery: papier + kreskowanie, przekrój 45°, rysowane linie, kontury sylwetek |
+| `sketchMaterials.ts` | tryb **CAD**: papier + kreskowanie ekranowe, przekrój 45°, rysowane linie, kontury sylwetek |
+| `pencilMaterials.ts` | tryb **Ołówek** (domyślny): grafit, kreskowanie w przestrzeni części, kontury o zmiennej grubości |
+| `pencilStyle.ts` | typy stylu i parametry szkicu (`DEFAULT_PENCIL_PARAMS`) |
 | `EngineControls.tsx` | pauza/wznowienie, reset widoku, suwak obrotów |
 | `src/lib/engine/kinematics.ts` | kinematyka korbowo-tłokowa (r = 40 mm, l = 135 mm, fazy 0°/180°/180°/0°) |
 | `src/lib/engine/rig.ts` | `applyEngineState` — wszystkie części z jednego kąta wału; kontrakt nazw dla GLB |
@@ -86,6 +88,37 @@ Przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem (`src
 - Rysowanie linii jest rzeczywiste: każdy odcinek krawędzi rysuje się od początku do końca (atrybuty `aT`/`aOrder`).
   Kontury sylwetek (odwrócona powłoka) i kreskowanie przekroju pojawiają się przez przenikanie.
 - Sterowanie: mysz — obrót (ograniczony do strony przekroju) i zoom; dotyk — jeden palec przewija stronę, dwa palce obracają.
+
+### Tryby renderowania: Ołówek / CAD
+
+Przełącznik „Ołówek | CAD” w panelu sterowania podmienia wyłącznie materiały (`engine.setStyle`) — ta sama geometria,
+ten sam kąt wału, kamera i oś czasu; przełączenie nie resetuje animacji.
+
+Tryb **Ołówek** (`pencilMaterials.ts`):
+
+- **Grafit** — half-Lambert → ton z miękkim przejściem, najciemniejsze miejsca ograniczone do ~82% grafitu (nigdy czerń),
+  ziarno grafitu z szumu 3D w przestrzeni lokalnej części.
+- **Kreskowanie** — triplanarne, w przestrzeni lokalnej (kreski jadą razem z tłokiem/korbowodem/wałem), 3 warstwy
+  zależne od zacienienia (2 na urządzeniach dotykowych / ≤ 4 rdzenie). Każda kreska ma własny nacisk, grubość,
+  przesunięcie i przerwy — z hash(indeks kreski), więc wzór jest deterministyczny. Antyaliasing przez pochodne ekranowe;
+  gdy kreski są gęstsze niż ~2 px (oddalenie), wzór przechodzi w ton — bez mory i migotania.
+- **Kontury** — sylwetki o grubości zmiennej wzdłuż krawędzi (szum z pozycji lokalnej), krawędzie z naciskiem ołówka
+  i drugim, lżejszym pociągnięciem przesuniętym o stałe ułamki piksela.
+- **Przekrój** — szrafura 45° rysowana ołówkiem (zmienny nacisk, przerwy, ziarno).
+- **Papier** — ledwo widoczne, deterministyczne ziarno nieruchome względem ekranu (kartka pod animowanym rysunkiem)
+  w shaderze i jako nakładka SVG (`feTurbulence`, stały seed) pod modelem.
+
+Strojenie — `EngineHero` przyjmuje `pencilParams` (`pencilStyle.ts`, 1 = domyślnie):
+
+| Parametr | Działanie |
+| --- | --- |
+| `outlineStrength` | grubość i nasycenie konturów oraz krawędzi |
+| `graphiteStrength` | ciemność cieniowania i kreskowania („kreskowanie za ciemne” → zmniejsz) |
+| `hatchingDensity` | liczba kresek na milimetr |
+| `paperTextureStrength` | widoczność faktury papieru |
+| `lineIrregularity` | zmienność nacisku, grubości i przerwy w kreskach („bardziej ołówkowo” → zwiększ) |
+
+Przykład: `<EngineHero fallback={…} pencilParams={{ ...DEFAULT_PENCIL_PARAMS, graphiteStrength: 0.8 }} />`.
 
 ### Docelowy model GLB
 
