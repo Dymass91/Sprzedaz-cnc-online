@@ -54,7 +54,7 @@ export function Hero() {
             ))}
           </ul>
         </div>
-        <div className="relative -mx-4 sm:mx-0 lg:-mr-10 xl:-mr-16">
+        <div className="relative -mx-4 sm:mx-0 lg:-mr-6 xl:-mr-10 min-[1400px]:-mr-16">
           {/* Animowany silnik R4; ilustracja SVG to podgląd do czasu załadowania i fallback bez WebGL */}
           <EngineHero fallback={<HeroVisual />} />
         </div>

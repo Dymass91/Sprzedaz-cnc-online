@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { cn } from "@/lib/cn";
 import { PlayIcon } from "@/components/ui/icons";
 import { EngineControls, SPEED_RANGE } from "./EngineControls";
+import { PartSketches } from "./sketches/PartSketches";
 import { DEFAULT_PENCIL_PARAMS, DEFAULT_RENDER_STYLE, type PencilParams, type RenderStyle } from "./pencilStyle";
 
 const EngineScene = dynamic(() => import("./EngineScene"), { ssr: false });
@@ -121,84 +122,91 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
   const animating = !introDone || playing || !stopped;
 
   return (
-    <div ref={containerRef} className="relative aspect-[720/520] w-full">
-      {ready && renderStyle === "pencil" ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage: PAPER_TEXTURE,
-            opacity: 0.05 * pencilParams.paperTextureStrength,
-            maskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
-            WebkitMaskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
-          }}
-        />
-      ) : null}
-      {fallbackGone ? null : (
-        <div
-          className={cn("absolute inset-0 transition-opacity duration-700", ready ? "pointer-events-none opacity-0" : "opacity-100")}
-          aria-hidden={ready}
-          onTransitionEnd={() => ready && setFallbackGone(true)}
-        >
-          {fallback}
-        </div>
-      )}
-
-      {showScene ? (
-        <div className={cn("absolute inset-0 transition-opacity duration-700", ready ? "opacity-100" : "opacity-0")}>
-          <EngineScene
-            playing={playing}
-            speedRpm={speedRpm}
-            reducedMotion={reducedMotion}
-            renderStyle={renderStyle}
-            pencilParams={pencilParams}
-            hatchLayers={hatchLayers}
-            visible={visible}
-            animating={animating}
-            resetSignal={resetSignal}
-            onReady={onReady}
-            onIntroDone={onIntroDone}
-            onStopped={onStopped}
+    // Arkusz: silnik + szkice części (kolumna obok od xl, rząd pod spodem od md, ukryte na telefonie)
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-3">
+      <div ref={containerRef} className="relative aspect-[720/520] w-full min-w-0 xl:aspect-auto xl:h-[480px] xl:flex-1">
+        {ready && renderStyle === "pencil" ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage: PAPER_TEXTURE,
+              opacity: 0.05 * pencilParams.paperTextureStrength,
+              maskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
+              WebkitMaskImage: "radial-gradient(ellipse 72% 70% at 58% 50%, #000 45%, transparent 100%)",
+            }}
           />
-        </div>
-      ) : null}
+        ) : null}
+        {fallbackGone ? null : (
+          <div
+            className={cn("absolute inset-0 transition-opacity duration-700", ready ? "pointer-events-none opacity-0" : "opacity-100")}
+            aria-hidden={ready}
+            onTransitionEnd={() => ready && setFallbackGone(true)}
+          >
+            {fallback}
+          </div>
+        )}
 
-      {ready ? (
-        <>
-          <p className="pointer-events-none absolute top-2 left-2 font-mono text-[10.5px] leading-snug tracking-wide text-ink-500 uppercase sm:left-4">
-            Silnik R4 · przekrój
-            <span className="block normal-case tracking-normal text-ink-400">Wizualizacja poglądowa · przeciągnij, aby obrócić</span>
-          </p>
-          <div className="absolute right-2 bottom-2 sm:right-4 sm:bottom-3">
-            <EngineControls
+        {showScene ? (
+          <div className={cn("absolute inset-0 transition-opacity duration-700", ready ? "opacity-100" : "opacity-0")}>
+            <EngineScene
               playing={playing}
               speedRpm={speedRpm}
+              reducedMotion={reducedMotion}
               renderStyle={renderStyle}
-              onRenderStyleChange={setRenderStyle}
-              onToggle={toggle}
-              onSpeedChange={setSpeedRpm}
-              onResetCamera={() => setResetSignal((n) => n + 1)}
+              pencilParams={pencilParams}
+              hatchLayers={hatchLayers}
+              visible={visible}
+              animating={animating}
+              resetSignal={resetSignal}
+              onReady={onReady}
+              onIntroDone={onIntroDone}
+              onStopped={onStopped}
             />
           </div>
-        </>
-      ) : null}
+        ) : null}
 
-      {capability === "manual" && !requested ? (
-        <button
-          type="button"
-          onClick={() => setRequested(true)}
-          className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-4 py-2 text-[12.5px] font-medium text-ink-800 shadow-card backdrop-blur-sm hover:border-ink-300"
-        >
-          <PlayIcon size={14} />
-          Uruchom animację 3D
-        </button>
-      ) : null}
+        {ready ? (
+          <>
+            <p className="pointer-events-none absolute top-2 left-2 font-mono text-[10.5px] leading-snug tracking-wide text-ink-500 uppercase sm:left-4">
+              Silnik R4 · przekrój
+              <span className="block normal-case tracking-normal text-ink-400">Wizualizacja poglądowa · przeciągnij, aby obrócić</span>
+            </p>
+            <div className="absolute right-2 bottom-2 sm:right-4 sm:bottom-3">
+              <EngineControls
+                playing={playing}
+                speedRpm={speedRpm}
+                renderStyle={renderStyle}
+                onRenderStyleChange={setRenderStyle}
+                onToggle={toggle}
+                onSpeedChange={setSpeedRpm}
+                onResetCamera={() => setResetSignal((n) => n + 1)}
+              />
+            </div>
+          </>
+        ) : null}
 
-      {requested && !ready && capability !== "unsupported" ? (
-        <p role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11.5px] text-ink-500">
-          Ładowanie wizualizacji…
-        </p>
-      ) : null}
+        {capability === "manual" && !requested ? (
+          <button
+            type="button"
+            onClick={() => setRequested(true)}
+            className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-4 py-2 text-[12.5px] font-medium text-ink-800 shadow-card backdrop-blur-sm hover:border-ink-300"
+          >
+            <PlayIcon size={14} />
+            Uruchom animację 3D
+          </button>
+        ) : null}
+
+        {requested && !ready && capability !== "unsupported" ? (
+          <p role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11.5px] text-ink-500">
+            Ładowanie wizualizacji…
+          </p>
+        ) : null}
+      </div>
+      <PartSketches
+        style={renderStyle}
+        className="hidden md:grid md:grid-cols-3 md:items-end md:gap-6 xl:flex xl:w-[165px] xl:shrink-0 xl:flex-col xl:items-stretch xl:gap-2"
+      />
     </div>
   );
 }
