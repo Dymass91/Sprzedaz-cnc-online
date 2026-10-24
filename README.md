@@ -71,7 +71,8 @@ Przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem (`src
 
 | Plik | Rola |
 | --- | --- |
-| `EngineHero.tsx` | decyzja o ładowaniu, fallback SVG, pauza poza ekranem, `prefers-reduced-motion` |
+| `EngineHero.tsx` | fazy ładowania (loading / ready / error), statyczny szkic, granica błędu, pauza poza ekranem, `prefers-reduced-motion` |
+| `engineStill.ts` + `public/hero/engine-r4-sketch*.webp` | statyczny szkic silnika (generowany, patrz niżej) |
 | `EngineScene.tsx` | `<Canvas>` (ładowany dynamicznie, tylko klient), kamera, OrbitControls, reset |
 | `EngineAssembly.tsx` | model proceduralny + oś czasu: szkic → cieniowanie → start wału → praca |
 | `engineGeometry.ts` | geometria: blok w przekroju, wał z przeciwwagami, korbowody, tłoki |
@@ -83,7 +84,14 @@ Przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem (`src
 | `src/lib/engine/rig.ts` | `applyEngineState` — wszystkie części z jednego kąta wału; kontrakt nazw dla GLB |
 
 - Ładowanie: desktop — w wolnej chwili przeglądarki (`requestIdleCallback`); telefon / oszczędzanie danych — po kliknięciu
-  „Uruchom animację 3D”; brak WebGL — zostaje ilustracja SVG. Three.js nie trafia do początkowego JS strony.
+  „Uruchom animację 3D”. Three.js nie trafia do początkowego JS strony.
+- Do czasu odsłonięcia sceny (oraz przy błędzie, utracie kontekstu WebGL lub braku WebGL) widoczny jest statyczny
+  szkic **tego samego** silnika: ta sama kamera, poza wału 0° i styl ołówka; rozmyta miniatura (~1,4 KB) jest w HTML,
+  więc silnik widać od pierwszej klatki. Scena jest odsłaniana (przenikanie 500 ms) dopiero po wyrenderowaniu
+  pierwszych klatek ze skompilowanymi shaderami i startuje z narysowanego stanu. Kontener ma stały rozmiar — bez przesunięć układu.
+  Stan widać w atrybucie `data-engine-phase`.
+- Szkic regeneruje się po zmianie geometrii, kamery lub materiałów: `npm run dev`, potem
+  `node scripts/capture-engine-still.mjs [http://localhost:3000]` (warianty 1× i 1,5× — gęstość kreskowania zależy od DPR canvasa).
 - Renderowanie: `frameloop` = ciągły tylko podczas wejścia, pracy lub hamowania wału; po pauzie na żądanie; poza ekranem wstrzymany.
 - Rysowanie linii jest rzeczywiste: każdy odcinek krawędzi rysuje się od początku do końca (atrybuty `aT`/`aOrder`).
   Kontury sylwetek (odwrócona powłoka) i kreskowanie przekroju pojawiają się przez przenikanie.
@@ -118,7 +126,7 @@ Strojenie — `EngineHero` przyjmuje `pencilParams` (`pencilStyle.ts`, 1 = domy�
 | `paperTextureStrength` | widoczność faktury papieru |
 | `lineIrregularity` | zmienność nacisku, grubości i przerwy w kreskach („bardziej ołówkowo” → zwiększ) |
 
-Przykład: `<EngineHero fallback={…} pencilParams={{ ...DEFAULT_PENCIL_PARAMS, graphiteStrength: 0.8 }} />`.
+Przykład: `<EngineHero pencilParams={{ ...DEFAULT_PENCIL_PARAMS, graphiteStrength: 0.8 }} />`.
 
 ### Docelowy model GLB
 

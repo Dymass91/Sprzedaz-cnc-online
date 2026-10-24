@@ -3,7 +3,6 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
 import { CalendarIcon, GaugeIcon, TruckIcon } from "@/components/ui/icons";
 import { EngineHero } from "@/components/hero-engine/EngineHero";
-import { HeroVisual } from "./HeroVisual";
 
 const highlights = [
   { icon: GaugeIcon, title: "Wycena online", text: "bez zbędnych formalności" },
@@ -55,8 +54,7 @@ export function Hero() {
           </ul>
         </div>
         <div className="relative -mx-4 sm:mx-0 lg:-mr-6 xl:-mr-10 min-[1400px]:-mr-16">
-          {/* Animowany silnik R4; ilustracja SVG to podgląd do czasu załadowania i fallback bez WebGL */}
-          <EngineHero fallback={<HeroVisual />} />
+          <EngineHero />
         </div>
       </Container>
     </section>

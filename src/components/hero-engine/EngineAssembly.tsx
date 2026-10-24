@@ -228,6 +228,13 @@ export type EngineAssemblyProps = {
   onIntroDone?: () => void;
   /** Wał całkowicie się zatrzymał (po pauzie). */
   onStopped?: () => void;
+  /**
+   * Start od gotowego rysunku: statyczny szkic silnika był już widoczny,
+   * więc scena pomija fazę rysowania i od razu „ożywa” (start wału).
+   */
+  startDrawn?: boolean;
+  /** Pierwsze klatki wyrenderowane po skompilowaniu shaderów — scenę można bezpiecznie odsłonić. */
+  onFirstFrame?: () => void;
 };
 
 /**
@@ -244,10 +251,13 @@ export function EngineAssembly({
   hatchLayers = 3,
   onIntroDone,
   onStopped,
+  startDrawn = true,
+  onFirstFrame,
 }: EngineAssemblyProps) {
   const engine = useMemo(() => createProceduralEngine(), []);
   useEffect(() => () => engine.dispose(), [engine]);
   const invalidate = useThree((s) => s.invalidate);
+  const get = useThree((s) => s.get);
 
   // Styl i parametry szkicu — zmiana nie dotyka stanu symulacji ani kamery.
   useEffect(() => {
@@ -265,13 +275,40 @@ export function EngineAssembly({
     control.current = { playing, speedRpm, reducedMotion, onIntroDone, onStopped };
   }, [playing, speedRpm, reducedMotion, onIntroDone, onStopped]);
 
-  const sim = useRef({ time: 0, theta: 0, omega: 0, introReported: false, stoppedReported: true });
+  const sim = useRef({
+    // Start od narysowanego i zacieniowanego szkicu — dokładnie stan statycznego podglądu.
+    time: startDrawn ? INTRO.shadeStart + INTRO.shadeDuration : 0,
+    theta: 0,
+    omega: 0,
+    introReported: false,
+    stoppedReported: true,
+    /** Klatki wyrenderowane od skompilowania shaderów (-1 = jeszcze nie skompilowano). */
+    framesSinceCompile: -1,
+  });
+  const firstFrameCallback = useRef(onFirstFrame);
+  useEffect(() => {
+    firstFrameCallback.current = onFirstFrame;
+  }, [onFirstFrame]);
+
+  const mountStyle = useRef(renderStyle);
+  // Prekompilacja shaderów obu stylów — bez zacięcia przy odsłonięciu sceny i przy przełączeniu na CAD.
+  useEffect(() => {
+    const { gl, scene, camera } = get();
+    const style = mountStyle.current;
+    engine.setStyle(style === "pencil" ? "cad" : "pencil");
+    gl.compile(scene, camera);
+    engine.setStyle(style);
+    gl.compile(scene, camera);
+    sim.current.framesSinceCompile = 0;
+    invalidate();
+  }, [engine, get, invalidate]);
 
   useFrame((state, delta) => {
     const c = control.current;
     const s = sim.current;
     const dt = Math.min(delta, 0.05);
     s.time += dt;
+    if (s.framesSinceCompile >= 0 && ++s.framesSinceCompile === 2) firstFrameCallback.current?.();
     const t = c.reducedMotion ? INTRO.done + 1 : s.time;
 
     // Faza 1–2: kontury, przekrój, cieniowanie

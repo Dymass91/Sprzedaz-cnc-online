@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Image from "next/image";
+import { Component, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { PlayIcon } from "@/components/ui/icons";
 import { EngineControls, SPEED_RANGE } from "./EngineControls";
+import { ENGINE_STILL } from "./engineStill";
 import { PartSketches } from "./sketches/PartSketches";
 import { DEFAULT_PENCIL_PARAMS, DEFAULT_RENDER_STYLE, type PencilParams, type RenderStyle } from "./pencilStyle";
 
@@ -53,19 +55,67 @@ function subscribeReducedMotion(cb: () => void) {
 }
 
 /**
+ * Statyczny szkic tego samego silnika R4 — wyrenderowany z prawdziwej sceny przy identycznej
+ * kamerze, pozie (wał w położeniu 0°) i stylu ołówka (`scripts/capture-engine-still.mjs`).
+ * Obraz ma proporcje 2:1 i jest skalowany do wysokości kontenera (object-cover, środek),
+ * tak jak kadr kamery perspektywicznej — dlatego pokrywa się z modelem 3D przy każdej szerokości.
+ * Rozmyta miniatura (ok. 1,4 KB) jest osadzona w HTML — silnik widać od pierwszej klatki,
+ * zanim obraz zdąży się pobrać.
+ * Gęstość kreskowania zależy od rozdzielczości canvasa (DPR 1–1,5), więc są dwa warianty:
+ * 1,5× dla ekranów o gęstości ≥ 1,25 od md (na telefonie scena jest niska — wystarcza 1×).
+ */
+function EngineStill() {
+  return (
+    <picture>
+      <source media="(min-width: 768px) and (min-resolution: 1.25dppx)" srcSet={ENGINE_STILL.src15x} />
+      <Image
+        src={ENGINE_STILL.src}
+        placeholder="blur"
+        blurDataURL={ENGINE_STILL.blurDataURL}
+        alt=""
+        fill
+        loading="eager"
+        fetchPriority="high"
+        unoptimized
+        className="pointer-events-none object-cover object-center select-none"
+      />
+    </picture>
+  );
+}
+
+/** Błąd sceny 3D (ładowanie modułu, WebGL, shadery) — zostaje statyczny szkic, błąd trafia do konsoli. */
+class SceneErrorBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Scena 3D silnika nie została uruchomiona — pozostaje statyczny szkic.", error, info.componentStack);
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+type LoadPhase = "loading" | "ready" | "error";
+
+/**
  * Hero: animowany przekrój silnika R4 w stylu rysunku ołówkiem.
- * Do czasu załadowania sceny (i gdy WebGL jest niedostępny) widoczny jest
- * `fallback` — dotychczasowa ilustracja SVG renderowana po stronie serwera.
+ *
+ * Ładowanie: od pierwszego renderu (także SSR) widoczny jest statyczny szkic silnika.
+ * Scena 3D jest odsłaniana dopiero, gdy wyrenderuje pierwsze klatki (shadery skompilowane),
+ * startuje od tego samego narysowanego stanu i „ożywa”. Przy błędzie lub braku WebGL
+ * zostaje szkic. Kontener ma stały rozmiar — ładowanie nie przesuwa układu.
  */
 export type EngineHeroProps = {
-  fallback: ReactNode;
   /** Styl początkowy (domyślnie szkic ołówkiem). */
   initialStyle?: RenderStyle;
   /** Strojenie szkicu: kontury, grafit, gęstość kreskowania, papier, nieregularność linii. */
   pencilParams?: PencilParams;
 };
 
-export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, pencilParams = DEFAULT_PENCIL_PARAMS }: EngineHeroProps) {
+export function EngineHero({ initialStyle = DEFAULT_RENDER_STYLE, pencilParams = DEFAULT_PENCIL_PARAMS }: EngineHeroProps) {
   const capability = useSyncExternalStore<Capability>(noopSubscribe, detectCapability, () => "pending");
   const hatchLayers = useSyncExternalStore(noopSubscribe, detectHatchLayers, () => 3);
   const [renderStyle, setRenderStyle] = useState<RenderStyle>(initialStyle);
@@ -76,9 +126,9 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [requested, setRequested] = useState(false);
-  const [ready, setReady] = useState(false);
-  // Po przejściu do 3D ilustracja SVG jest usuwana — jej animacje CSS nie pracują w tle.
-  const [fallbackGone, setFallbackGone] = useState(false);
+  const [phase, setPhase] = useState<LoadPhase>("loading");
+  // Po odsłonięciu sceny statyczny szkic jest usuwany z drzewa.
+  const [stillGone, setStillGone] = useState(false);
   const [visible, setVisible] = useState(true);
   const [userPlaying, setUserPlaying] = useState<boolean | null>(null);
   const [speedRpm, setSpeedRpm] = useState<number>(SPEED_RANGE.default);
@@ -88,6 +138,7 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
 
   // Przy ograniczonym ruchu silnik startuje zatrzymany — użytkownik może go uruchomić.
   const playing = userPlaying ?? !reducedMotion;
+  const ready = phase === "ready";
 
   // Automatyczny start w wolnej chwili przeglądarki — nie konkuruje z pierwszym renderem strony.
   useEffect(() => {
@@ -110,7 +161,11 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
     return () => observer.disconnect();
   }, []);
 
-  const onReady = useCallback(() => setReady(true), []);
+  const onReady = useCallback(() => setPhase((p) => (p === "error" ? p : "ready")), []);
+  const onError = useCallback(() => {
+    setPhase("error");
+    setStillGone(false);
+  }, []);
   const onIntroDone = useCallback(() => setIntroDone(true), []);
   const onStopped = useCallback(() => setStopped(true), []);
   const toggle = () => {
@@ -118,14 +173,18 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
     setUserPlaying(!playing);
   };
 
-  const showScene = requested && capability !== "unsupported";
+  const showScene = requested && capability !== "unsupported" && phase !== "error";
   const animating = !introDone || playing || !stopped;
 
   return (
     // Arkusz: silnik + szkice części (kolumna obok od xl, rząd pod spodem od md, ukryte na telefonie)
     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-3">
-      <div ref={containerRef} className="relative aspect-[720/520] w-full min-w-0 xl:aspect-auto xl:h-[480px] xl:flex-1">
-        {ready && renderStyle === "pencil" ? (
+      <div
+        ref={containerRef}
+        data-engine-phase={phase}
+        className="relative aspect-[720/520] w-full min-w-0 xl:aspect-auto xl:h-[480px] xl:flex-1"
+      >
+        {renderStyle === "pencil" ? (
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -137,53 +196,59 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
             }}
           />
         ) : null}
-        {fallbackGone ? null : (
+
+        {/* Statyczny szkic silnika: od pierwszego renderu do odsłonięcia sceny (oraz przy błędzie) */}
+        {stillGone ? null : (
           <div
-            className={cn("absolute inset-0 transition-opacity duration-700", ready ? "pointer-events-none opacity-0" : "opacity-100")}
-            aria-hidden={ready}
-            onTransitionEnd={() => ready && setFallbackGone(true)}
+            className={cn("absolute inset-0 transition-opacity duration-500", ready ? "opacity-0" : "opacity-100")}
+            aria-hidden="true"
+            onTransitionEnd={() => ready && setStillGone(true)}
           >
-            {fallback}
+            <EngineStill />
           </div>
         )}
 
         {showScene ? (
-          <div className={cn("absolute inset-0 transition-opacity duration-700", ready ? "opacity-100" : "opacity-0")}>
-            <EngineScene
-              playing={playing}
-              speedRpm={speedRpm}
-              reducedMotion={reducedMotion}
-              renderStyle={renderStyle}
-              pencilParams={pencilParams}
-              hatchLayers={hatchLayers}
-              visible={visible}
-              animating={animating}
-              resetSignal={resetSignal}
-              onReady={onReady}
-              onIntroDone={onIntroDone}
-              onStopped={onStopped}
-            />
+          <div className={cn("absolute inset-0 transition-opacity duration-500", ready ? "opacity-100" : "opacity-0")}>
+            <SceneErrorBoundary onError={onError}>
+              <EngineScene
+                playing={playing}
+                speedRpm={speedRpm}
+                reducedMotion={reducedMotion}
+                renderStyle={renderStyle}
+                pencilParams={pencilParams}
+                hatchLayers={hatchLayers}
+                visible={visible}
+                animating={animating}
+                resetSignal={resetSignal}
+                onReady={onReady}
+                onError={onError}
+                onIntroDone={onIntroDone}
+                onStopped={onStopped}
+              />
+            </SceneErrorBoundary>
           </div>
         ) : null}
 
+        <p className="pointer-events-none absolute top-2 left-2 font-mono text-[10.5px] leading-snug tracking-wide text-ink-500 uppercase sm:left-4">
+          Silnik R4 · przekrój
+          <span className={cn("block normal-case tracking-normal text-ink-400 transition-opacity duration-500", ready ? "opacity-100" : "opacity-0")}>
+            Wizualizacja poglądowa · przeciągnij, aby obrócić
+          </span>
+        </p>
+
         {ready ? (
-          <>
-            <p className="pointer-events-none absolute top-2 left-2 font-mono text-[10.5px] leading-snug tracking-wide text-ink-500 uppercase sm:left-4">
-              Silnik R4 · przekrój
-              <span className="block normal-case tracking-normal text-ink-400">Wizualizacja poglądowa · przeciągnij, aby obrócić</span>
-            </p>
-            <div className="absolute right-2 bottom-2 sm:right-4 sm:bottom-3">
-              <EngineControls
-                playing={playing}
-                speedRpm={speedRpm}
-                renderStyle={renderStyle}
-                onRenderStyleChange={setRenderStyle}
-                onToggle={toggle}
-                onSpeedChange={setSpeedRpm}
-                onResetCamera={() => setResetSignal((n) => n + 1)}
-              />
-            </div>
-          </>
+          <div className="absolute right-2 bottom-2 sm:right-4 sm:bottom-3">
+            <EngineControls
+              playing={playing}
+              speedRpm={speedRpm}
+              renderStyle={renderStyle}
+              onRenderStyleChange={setRenderStyle}
+              onToggle={toggle}
+              onSpeedChange={setSpeedRpm}
+              onResetCamera={() => setResetSignal((n) => n + 1)}
+            />
+          </div>
         ) : null}
 
         {capability === "manual" && !requested ? (
@@ -195,12 +260,6 @@ export function EngineHero({ fallback, initialStyle = DEFAULT_RENDER_STYLE, penc
             <PlayIcon size={14} />
             Uruchom animację 3D
           </button>
-        ) : null}
-
-        {requested && !ready && capability !== "unsupported" ? (
-          <p role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11.5px] text-ink-500">
-            Ładowanie wizualizacji…
-          </p>
         ) : null}
       </div>
       <PartSketches

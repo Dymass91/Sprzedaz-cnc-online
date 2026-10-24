@@ -65,7 +65,10 @@ export type EngineSceneProps = {
   /** Pętla ciągła potrzebna (wejście, praca lub hamowanie wału). */
   animating: boolean;
   resetSignal: number;
+  /** Scena wyrenderowała pierwsze klatki — można ją odsłonić. */
   onReady: () => void;
+  /** Utrata kontekstu WebGL — hero wraca do statycznego szkicu. */
+  onError: () => void;
   onIntroDone: () => void;
   onStopped: () => void;
 };
@@ -82,7 +85,7 @@ export default function EngineScene(props: EngineSceneProps) {
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
-        props.onReady();
+        gl.domElement.addEventListener("webglcontextlost", () => props.onError(), { once: true });
       }}
       aria-label="Animowany przekrój czterocylindrowego silnika rzędowego w stylu rysunku ołówkiem"
       role="img"
@@ -96,6 +99,8 @@ export default function EngineScene(props: EngineSceneProps) {
         hatchLayers={props.hatchLayers}
         onIntroDone={props.onIntroDone}
         onStopped={props.onStopped}
+        // Gotowość = shadery skompilowane i pierwsze klatki wyrenderowane (nie samo utworzenie kontekstu).
+        onFirstFrame={props.onReady}
       />
       <OrbitControls
         makeDefault
